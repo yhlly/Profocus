@@ -1,0 +1,25 @@
+<!-- views/partials/goal-actions-buttons.ejs -->
+<div class="btn-group btn-group-sm">
+    <button class="btn btn-info edit-goal"
+            data-id="<%= goal.id %>"
+            data-title="<%= goal.title %>"
+            data-description="<%= goal.description || '' %>"
+            data-category="<%= goal.category || '' %>"
+            data-priority="<%= goal.priority %>"
+            data-status="<%= goal.status %>"
+            data-deadline="<%= goal.deadline ? goal.deadline : '' %>"
+            data-estimated-pomodoros="<%= goal.estimated_pomodoros || 1 %>">
+        Edit
+    </button>
+    <button class="btn btn-danger delete-goal" data-id="<%= goal.id %>">
+        Delete
+    </button>
+    <% if (goal.status !== 'Completed') { %>
+        <button class="btn btn-success start-timer-btn"
+                data-id="<%= goal.id %>"
+                data-title="<%= goal.title %>"
+                data-estimated-pomodoros="<%= goal.estimated_pomodoros || 1 %>">
+            Start Timer
+        </button>
+    <% } %>
+</div>

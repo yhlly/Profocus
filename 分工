@@ -1,0 +1,177 @@
+# ProFocus 项目分工计划
+
+## 项目概述
+
+ProFocus是一个基于番茄工作法(Pomodoro Technique)的网站应用，旨在通过25分钟专注工作和短暂休息的循环来帮助用户提高生产力和专注度。该项目采用Node.js、Express和MySQL技术栈构建，目标用户为学生和专业人士。
+
+## 团队分工
+
+### 角色1：系统架构师
+
+**负责文件:**
+- app.js
+- .env
+- config/db.js
+- package.json
+- project_structure.txt
+- .sql（数据库架构）
+
+**主要职责:**
+- 整体系统架构设计与实现
+- 数据库连接与配置
+- 应用服务器设置与中间件配置
+- 依赖管理与环境配置
+- 项目结构维护
+
+### 角色2：用户认证开发者
+
+**负责文件:**
+- controllers/authController.js
+- middleware/auth.js
+- routes/auth.js
+- models/User.js
+- views/login.ejs
+- views/register.ejs
+
+**主要职责:**
+- 用户注册与登录功能实现
+- 身份验证中间件开发
+- 密码加密与安全管理
+- JWT令牌实现与管理
+- 用户相关视图开发
+
+### 角色3：目标管理开发者
+
+**负责文件:**
+- controllers/goalController.js（目标CRUD部分）
+- routes/goals.js
+- models/Goal.js
+- views/dashboard.ejs
+
+**主要职责:**
+- 目标创建、读取、更新和删除功能
+- 目标分类与优先级管理
+- 目标状态追踪功能
+- 仪表板界面开发
+- 目标相关API设计
+
+### 角色4：番茄钟计时器开发者
+
+**负责文件:**
+- views/timer.ejs
+- goalController.js（计时会话记录部分）
+- 计时器相关的客户端JavaScript
+
+**主要职责:**
+- 番茄钟计时器界面设计
+- 工作与休息时间计时功能
+- 计时器控制（开始、暂停、重置）
+- 会话记录与存储
+- 计时数据统计
+
+### 角色5：前端界面开发者
+
+**负责文件:**
+- public/css/style.css
+- views/partials/header.ejs
+- views/partials/footer.ejs
+- views/index.ejs
+- views/error.ejs
+
+**主要职责:**
+- 网站整体UI/UX设计
+- 响应式布局实现
+- 导航与用户界面组件开发
+- 统一样式管理
+- 视觉元素与交互设计
+
+### 角色6：数据分析与集成开发者
+
+**负责文件:**
+- routes/index.js
+- goalController.js（数据分析部分）
+- 数据可视化相关代码
+- 集成测试与质量保证
+
+**主要职责:**
+- 用户行为数据收集与分析
+- 目标完成率与专注时间统计
+- 数据可视化图表实现
+- 应用集成测试
+- 性能优化与监控
+
+## 项目文件结构概览
+
+```
+- .env
+- app.js
++ config/
+  - db.js
+  - passport.js
++ controllers/
+  - authController.js
+  - goalController.js
++ middleware/
+  - auth.js
++ models/
+  - Goal.js
+  - User.js
+- package-lock.json
+- package.json
++ public/
+  + css/
+    - style.css
+  + img/
+  + js/
++ routes/
+  - auth.js
+  - goals.js
+  - index.js
++ views/
+  - dashboard.ejs
+  - error.ejs
+  - index.ejs
+  - login.ejs
+  + partials/
+    - footer.ejs
+    - header.ejs
+  - register.ejs
+  - timer.ejs
+```
+
+## 数据库设计
+
+### users表
+- id (INT, 主键, 自增)
+- username (VARCHAR(50), 非空, 唯一)
+- email (VARCHAR(100), 非空, 唯一)
+- password (VARCHAR(255), 非空)
+- created_at (TIMESTAMP, 默认为当前时间)
+
+### goals表
+- id (INT, 主键, 自增)
+- user_id (INT, 外键, 非空)
+- title (VARCHAR(100), 非空)
+- description (TEXT)
+- category (VARCHAR(50))
+- priority (ENUM('Low', 'Medium', 'High'), 默认'Medium')
+- status (ENUM('Pending', 'In Progress', 'Completed'), 默认'Pending')
+- deadline (DATE)
+- created_at (TIMESTAMP, 默认为当前时间)
+
+### pomodoro_sessions表
+- id (INT, 主键, 自增)
+- user_id (INT, 外键, 非空)
+- goal_id (INT, 外键)
+- start_time (TIMESTAMP, 非空)
+- end_time (TIMESTAMP)
+- completed (BOOLEAN, 默认FALSE)
+
+## 协作流程
+
+1. 所有团队成员应遵循统一的代码风格和命名约定
+2. 使用Git进行版本控制，保持规范的提交信息
+3. 定期进行团队会议，协调进度和解决问题
+4. 在主要功能实现前进行充分的需求分析和设计
+5. 实现单元测试和集成测试，确保代码质量
+6. 角色之间存在功能交叉的部分需协调合作

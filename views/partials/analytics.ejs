@@ -1,0 +1,82 @@
+<!-- views/partials/analytics.ejs-->
+<%- include('partials/header') %>
+
+<h1 class="mb-4">Analytics Dashboard</h1>
+
+<div class="row">
+    <!-- Overview Cards -->
+    <div class="col-md-3 mb-4">
+        <div class="card text-center">
+            <div class="card-body">
+                <h5 class="card-title">Total Focus Time</h5>
+                <h2 class="display-4"><%= analytics.totalFocusHours %></h2>
+                <p class="card-text">Hours</p>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3 mb-4">
+        <div class="card text-center">
+            <div class="card-body">
+                <h5 class="card-title">Completed Sessions</h5>
+                <h2 class="display-4"><%= analytics.totalSessions %></h2>
+                <p class="card-text">Pomodoros</p>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3 mb-4">
+        <div class="card text-center">
+            <div class="card-body">
+                <h5 class="card-title">Completion Rate</h5>
+                <h2 class="display-4" id="completion-rate">
+                    <%= Math.round((analytics.statusCounts.Completed || 0) /
+                            Object.values(analytics.statusCounts).reduce((sum, count) => sum + count, 0) * 100) || 0 %>%
+                </h2>
+                <p class="card-text">Goals Completed</p>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3 mb-4">
+        <div class="card text-center">
+            <div class="card-body">
+                <h5 class="card-title">Productivity Score</h5>
+                <h2 class="display-4" id="productivity-score">--</h2>
+                <p class="card-text">Based on performance</p>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row">
+    <!-- Goal Status Chart -->
+    <div class="col-md-5 mb-4">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0">Goal Status Distribution</h5>
+            </div>
+            <div class="card-body">
+                <canvas id="goalStatusChart" height="250"></canvas>
+            </div>
+        </div>
+    </div>
+    <!-- Category Distribution -->
+    <div class="col-md-7 mb-4">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0">Weekly Focus Time</h5>
+            </div>
+            <div class="card-body">
+                <canvas id="weeklyFocusChart" height="250"></canvas>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row">
+    <!-- Goal Categories -->
+    <div class="col-md-6 mb-4">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0">Goal Categories</h5>
+            </div>
+            <div class="card-body">
+                <canvas id="categoriesChart" height="250"></canvas>

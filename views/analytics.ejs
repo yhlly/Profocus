@@ -1,0 +1,324 @@
+<!-- views/analytics.ejs-->
+<%- include('partials/header') %>
+
+<h1 class="mb-4">Analytics Dashboard</h1>
+
+<div class="row">
+    <!-- Overview Cards -->
+    <div class="col-md-3 mb-4">
+        <div class="card text-center">
+            <div class="card-body">
+                <h5 class="card-title">Total Focus Time</h5>
+                <h2 class="display-4"><%= analytics.totalFocusHours || 0 %></h2>
+                <p class="card-text">Hours</p>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3 mb-4">
+        <div class="card text-center">
+            <div class="card-body">
+                <h5 class="card-title">Completed Sessions</h5>
+                <h2 class="display-4"><%= analytics.totalSessions || 0 %></h2>
+                <p class="card-text">Pomodoros</p>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3 mb-4">
+        <div class="card text-center">
+            <div class="card-body">
+                <h5 class="card-title">Completion Rate</h5>
+                <h2 class="display-4" id="completion-rate">
+                    <%
+                    const completed = analytics.statusCounts.Completed || 0;
+                    const total = Object.values(analytics.statusCounts).reduce((sum, count) => sum + count, 0);
+                    const completionRate = total > 0 ? Math.round((completed / total) * 100) : 0;
+                    %>
+                    <%= completionRate %>%
+                </h2>
+                <p class="card-text">Goals Completed</p>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3 mb-4">
+        <div class="card text-center">
+            <div class="card-body">
+                <h5 class="card-title">Productivity Score</h5>
+                <h2 class="display-4" id="productivity-score">--</h2>
+                <p class="card-text">Based on performance</p>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row">
+    <!-- Goal Status Chart -->
+    <div class="col-md-5 mb-4">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0">Goal Status Distribution</h5>
+            </div>
+            <div class="card-body">
+                <canvas id="goalStatusChart" height="250"></canvas>
+            </div>
+        </div>
+    </div>
+    <!-- Weekly Focus Time -->
+    <div class="col-md-7 mb-4">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0">Weekly Focus Time</h5>
+            </div>
+            <div class="card-body">
+                <canvas id="weeklyFocusChart" height="250"></canvas>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row">
+    <!-- Goal Categories -->
+    <div class="col-md-6 mb-4">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0">Goal Categories</h5>
+            </div>
+            <div class="card-body">
+                <canvas id="categoriesChart" height="250"></canvas>
+            </div>
+        </div>
+    </div>
+
+    <!-- Goal Completion Trend -->
+    <div class="col-md-6 mb-4">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0">Goal Completion Trend</h5>
+            </div>
+            <div class="card-body">
+                <canvas id="completionTrendChart" height="250"></canvas>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    // Initialize charts after DOM is loaded
+    document.addEventListener('DOMContentLoaded', function() {
+        // Helper function to create a default chart if no data is available
+        function createDefaultChart(chartId, type, title) {
+            return new Chart(document.getElementById(chartId).getContext('2d'), {
+                type: type,
+                data: {
+                    labels: ['No Data Available'],
+                    datasets: [{
+                        data: [1],
+                        backgroundColor: ['#e9ecef'],
+                        borderWidth: 0
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            display: false
+                        },
+                        tooltip: {
+                            callbacks: {
+                                label: function() {
+                                    return 'No data available';
+                                }
+                            }
+                        }
+                    }
+                }
+            });
+        }
+
+        // Goal Status Distribution Chart
+        let statusData = {};
+        <% if (Object.keys(analytics.statusCounts).length > 0) { %>
+        statusData = <%- JSON.stringify(analytics.statusCounts) %>;
+        <% } else { %>
+        statusData = {
+            'Pending': 0,
+            'In Progress': 0,
+            'Completed': 0
+        };
+        <% } %>
+
+        const statusLabels = Object.keys(statusData);
+        const statusValues = Object.values(statusData);
+        const statusColors = ['#6c757d', '#007bff', '#28a745'];
+
+        if (statusValues.every(val => val === 0)) {
+            createDefaultChart('goalStatusChart', 'doughnut', 'Goal Status');
+        } else {
+            new Chart(document.getElementById('goalStatusChart').getContext('2d'), {
+                type: 'doughnut',
+                data: {
+                    labels: statusLabels,
+                    datasets: [{
+                        data: statusValues,
+                        backgroundColor: statusColors
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            position: 'bottom'
+                        }
+                    }
+                }
+            });
+        }
+
+        // Weekly Focus Time Chart
+        let dateLabels = [];
+        let focusData = [];
+        <% if (analytics.dateLabels && analytics.focusData) { %>
+        dateLabels = <%- JSON.stringify(analytics.dateLabels) %>;
+        focusData = <%- JSON.stringify(analytics.focusData) %>;
+        <% } else { %>
+        // Default data for last 7 days if none available
+        const days = [];
+        for (let i = 6; i >= 0; i--) {
+            const date = new Date();
+            date.setDate(date.getDate() - i);
+            days.push(date.toLocaleDateString('en-US', { month: 'numeric', day: 'numeric' }));
+        }
+        dateLabels = days;
+        focusData = Array(7).fill(0);
+        <% } %>
+
+        if (focusData.every(val => val === 0)) {
+            createDefaultChart('weeklyFocusChart', 'bar', 'Weekly Focus Time');
+        } else {
+            new Chart(document.getElementById('weeklyFocusChart').getContext('2d'), {
+                type: 'bar',
+                data: {
+                    labels: dateLabels,
+                    datasets: [{
+                        label: 'Focus Minutes',
+                        data: focusData,
+                        backgroundColor: '#007bff'
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            title: {
+                                display: true,
+                                text: 'Minutes'
+                            }
+                        }
+                    }
+                }
+            });
+        }
+
+        // Category Chart
+        let categoryData = [];
+        <% if (analytics.categoryData && analytics.categoryData.length > 0) { %>
+        categoryData = <%- JSON.stringify(analytics.categoryData) %>;
+        <% } %>
+
+        if (categoryData.length === 0) {
+            createDefaultChart('categoriesChart', 'pie', 'Categories');
+        } else {
+            const categoryLabels = categoryData.map(item => item.category || 'Uncategorized');
+            const categoryCounts = categoryData.map(item => item.count);
+            const categoryColors = [
+                '#4bc0c0', '#ff9f40', '#36a2eb', '#ffcd56', '#ff6384',
+                '#c9cbcf', '#9966ff', '#8AC926', '#1982C4', '#6A4C93'
+            ];
+
+            new Chart(document.getElementById('categoriesChart').getContext('2d'), {
+                type: 'pie',
+                data: {
+                    labels: categoryLabels,
+                    datasets: [{
+                        data: categoryCounts,
+                        backgroundColor: categoryColors.slice(0, categoryLabels.length)
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            position: 'bottom'
+                        }
+                    }
+                }
+            });
+        }
+
+        // Goal Completion Trend Chart
+        let completionTrend = [];
+        <% if (analytics.completionTrend && analytics.completionTrend.length > 0) { %>
+        completionTrend = <%- JSON.stringify(analytics.completionTrend) %>;
+        <% } %>
+
+        if (completionTrend.length === 0) {
+            createDefaultChart('completionTrendChart', 'line', 'Completion Trend');
+        } else {
+            const trendDates = completionTrend.map(item => item.date);
+            const totalGoals = completionTrend.map(item => item.total);
+            const completedGoals = completionTrend.map(item => item.completed);
+
+            new Chart(document.getElementById('completionTrendChart').getContext('2d'), {
+                type: 'line',
+                data: {
+                    labels: trendDates,
+                    datasets: [
+                        {
+                            label: 'Total Goals',
+                            data: totalGoals,
+                            borderColor: '#6c757d',
+                            backgroundColor: 'transparent',
+                            tension: 0.1
+                        },
+                        {
+                            label: 'Completed',
+                            data: completedGoals,
+                            borderColor: '#28a745',
+                            backgroundColor: 'transparent',
+                            tension: 0.1
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            title: {
+                                display: true,
+                                text: 'Count'
+                            }
+                        }
+                    }
+                }
+            });
+        }
+
+        // Fetch and update productivity score
+        fetch('/analytics/productivity-score')
+            .then(response => response.json())
+            .then(data => {
+                document.getElementById('productivity-score').textContent = data.score;
+            })
+            .catch(error => {
+                console.error('Error fetching productivity score:', error);
+            });
+    });
+</script>
+
+<%- include('partials/footer') %>

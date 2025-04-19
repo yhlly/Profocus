@@ -1,0 +1,589 @@
+<!-- views/timer.ejs-->
+<%- include('partials/header') %>
+
+<!-- Hidden element to store user data -->
+<div id="user-data" data-user-id="<%= user.id %>" style="display:none;"></div>
+
+<div class="row">
+    <div class="col-md-6 mx-auto">
+        <div class="card">
+            <div class="card-header">
+                <h3 class="text-center mb-0">Pomodoro Timer</h3>
+            </div>
+            <div class="card-body text-center">
+                <div class="timer-display my-4">
+                    <h1 id="time-display" class="display-1">25:00</h1>
+                    <p id="status-text" class="lead">Ready to start</p>
+                    <div id="current-goal-display" class="mb-2 py-2 px-3 bg-light rounded">
+                        <small class="text-muted">Current Goal:</small>
+                        <strong id="current-goal-text">None selected</strong>
+                    </div>
+
+                    <!-- Progress tracking for multi-pomodoro goals -->
+                    <div id="pomodoro-progress" class="my-3">
+                        <div class="progress mb-2">
+                            <div id="progress-bar" class="progress-bar" role="progressbar" style="width: 0%;" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100">0%</div>
+                        </div>
+                        <div class="d-flex justify-content-between">
+                            <small id="pomodoro-counter">Pomodoro 0 of 0</small>
+                            <small id="total-time-remaining">Remaining: 0m</small>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="timer-controls mb-4">
+                    <button id="start-btn" class="btn btn-primary btn-lg me-2">Start</button>
+                    <button id="pause-btn" class="btn btn-warning btn-lg me-2" disabled>Pause</button>
+                    <button id="reset-btn" class="btn btn-danger btn-lg">Reset</button>
+                </div>
+
+                <div class="timer-settings mb-4">
+                    <div class="row g-3">
+                        <div class="col-md-6">
+                            <label for="work-minutes" class="form-label">Work Time (minutes)</label>
+                            <input type="number" class="form-control" id="work-minutes" value="25" min="1" max="60">
+                        </div>
+                        <div class="col-md-6">
+                            <label for="break-minutes" class="form-label">Break Time (minutes)</label>
+                            <input type="number" class="form-control" id="break-minutes" value="5" min="1" max="30">
+                        </div>
+                    </div>
+                </div>
+
+                <div class="goal-selection mb-3">
+                    <label for="goal-select" class="form-label">Select a goal to work on (optional)</label>
+                    <select class="form-select" id="goal-select">
+                        <option value="">-- No goal selected --</option>
+                        <% if(typeof goals !== 'undefined' && goals.length > 0) { %>
+                            <% for(let i=0; i<goals.length; i++) { %>
+                                <option value="<%= goals[i].id %>" data-estimated-pomodoros="<%= goals[i].estimated_pomodoros || 1 %>">
+                                    <%= goals[i].title %>
+                                </option>
+                            <% } %>
+                        <% } %>
+                    </select>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row mt-4">
+    <div class="col-md-6 mx-auto">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0">Today's Sessions</h5>
+            </div>
+            <div class="card-body">
+                <div id="sessions-container">
+                    <p>Complete a Pomodoro session to see it here.</p>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    // Safely get the user ID from the data attribute
+    const userData = document.getElementById('user-data');
+    const userId = userData ? userData.getAttribute('data-user-id') : '';
+
+    // Pomodoro Timer
+    const timeDisplay = document.getElementById('time-display');
+    const statusText = document.getElementById('status-text');
+    const startBtn = document.getElementById('start-btn');
+    const pauseBtn = document.getElementById('pause-btn');
+    const resetBtn = document.getElementById('reset-btn');
+    const workMinutesInput = document.getElementById('work-minutes');
+    const breakMinutesInput = document.getElementById('break-minutes');
+    const goalSelect = document.getElementById('goal-select');
+    const sessionsContainer = document.getElementById('sessions-container');
+    const currentGoalText = document.getElementById('current-goal-text');
+    const progressBar = document.getElementById('progress-bar');
+    const pomodoroCounter = document.getElementById('pomodoro-counter');
+    const totalTimeRemaining = document.getElementById('total-time-remaining');
+
+    let timer;
+    let timeLeft;
+    let isRunning = false;
+    let isPaused = false;
+    let isWorkTime = true;
+    let workMinutes = 25;
+    let breakMinutes = 5;
+    let sessionsCompleted = 0;
+    let startTime;
+    let sessions = [];
+    let autoStartTimer = false;
+
+    // Multi-session variables
+    let currentPomodoroCount = 0;
+    let totalPomodoros = 1;
+    let currentGoalData = null;
+
+    // Initialize sessions from server data if available
+    <% if (typeof existingSessions !== 'undefined' && existingSessions) { %>
+    try {
+        const serverSessions = JSON.parse('<%- existingSessions %>');
+        if (serverSessions && serverSessions.length > 0) {
+            sessions = serverSessions.map(session => ({
+                ...session,
+                startTime: new Date(session.startTime),
+                endTime: new Date(session.endTime)
+            }));
+        }
+    } catch (e) {
+        console.error('Error parsing server sessions:', e);
+    }
+    <% } %>
+
+    // Parse URL parameters on page load
+    function getUrlParams() {
+        const params = new URLSearchParams(window.location.search);
+        const autoStart = params.get('autoStart');
+
+        return {
+            goalId: params.get('goalId'),
+            duration: parseInt(params.get('duration')) || 25,
+            breakDuration: parseInt(params.get('breakDuration')) || 5,
+            autoStart: autoStart === 'true' || autoStart === '1'
+        };
+    }
+
+    // Set initial values from URL parameters
+    function initFromUrlParams() {
+        const params = getUrlParams();
+
+        if (params.goalId) {
+            goalSelect.value = params.goalId;
+            // When a goal is selected, fetch its estimated_pomodoros
+            updateCurrentGoalDisplay();
+        } else {
+            // Set default values for progress tracking
+            totalPomodoros = 1;
+            updateProgressDisplay();
+        }
+
+        if (params.duration) {
+            workMinutesInput.value = params.duration;
+        }
+
+        if (params.breakDuration) {
+            breakMinutesInput.value = params.breakDuration;
+        }
+
+        // Store auto-start flag
+        autoStartTimer = params.autoStart;
+
+        initTimer();
+
+        // If auto-start is specified, start the timer automatically
+        if (autoStartTimer) {
+            // Small delay to ensure UI is updated first
+            setTimeout(() => {
+                startTimer();
+            }, 500);
+        }
+    }
+
+    // Update progress display
+    function updateProgressDisplay() {
+        const progressPercentage = totalPomodoros > 0
+            ? Math.round((currentPomodoroCount / totalPomodoros) * 100)
+            : 0;
+
+        progressBar.style.width = `${progressPercentage}%`;
+        progressBar.setAttribute('aria-valuenow', progressPercentage);
+        progressBar.textContent = `${progressPercentage}%`;
+
+        pomodoroCounter.textContent = `Pomodoro ${currentPomodoroCount} of ${totalPomodoros}`;
+
+        // Calculate remaining time in minutes
+        const remainingFullPomodoros = totalPomodoros - currentPomodoroCount;
+        const remainingWorkTime = remainingFullPomodoros * workMinutes;
+        const remainingBreakTime = (remainingFullPomodoros - 1) > 0 ? (remainingFullPomodoros - 1) * breakMinutes : 0;
+        const totalRemainingMinutes = remainingWorkTime + remainingBreakTime;
+
+        // Format for display
+        let remainingTimeDisplay = '';
+        if (totalRemainingMinutes >= 60) {
+            const hours = Math.floor(totalRemainingMinutes / 60);
+            const minutes = totalRemainingMinutes % 60;
+            remainingTimeDisplay = `${hours}h ${minutes}m`;
+        } else {
+            remainingTimeDisplay = `${totalRemainingMinutes}m`;
+        }
+
+        totalTimeRemaining.textContent = `Remaining: ${remainingTimeDisplay}`;
+    }
+
+    // Update the current goal display
+    function updateCurrentGoalDisplay() {
+        if (goalSelect.value) {
+            const selectedOption = goalSelect.options[goalSelect.selectedIndex];
+            currentGoalText.textContent = selectedOption.text;
+            document.getElementById('current-goal-display').classList.add('bg-info', 'bg-opacity-10');
+            document.getElementById('current-goal-display').classList.remove('bg-light');
+
+            // Reset pomodoro counts when a new goal is selected
+            currentPomodoroCount = 0;
+
+            // Get the estimated pomodoros from the data attribute
+            const estimatedPomodoros = selectedOption.getAttribute('data-estimated-pomodoros');
+            totalPomodoros = parseInt(estimatedPomodoros) || 1;
+
+            updateProgressDisplay();
+        } else {
+            currentGoalText.textContent = 'None selected';
+            document.getElementById('current-goal-display').classList.remove('bg-info', 'bg-opacity-10');
+            document.getElementById('current-goal-display').classList.add('bg-light');
+
+            // Reset progress tracking
+            totalPomodoros = 1;
+            currentPomodoroCount = 0;
+            updateProgressDisplay();
+        }
+    }
+
+    // Load sessions from localStorage on page load
+    document.addEventListener('DOMContentLoaded', function() {
+        // Set values from URL parameters first
+        initFromUrlParams();
+
+        // Only load from localStorage if we don't have server sessions
+        if (sessions.length === 0) {
+            const savedSessions = localStorage.getItem(`pomodoro_sessions_${userId}`);
+            if (savedSessions) {
+                try {
+                    sessions = JSON.parse(savedSessions).map(session => {
+                        return {
+                            ...session,
+                            startTime: new Date(session.startTime),
+                            endTime: new Date(session.endTime)
+                        };
+                    });
+                } catch (e) {
+                    console.error('Error loading saved sessions:', e);
+                    sessions = [];
+                }
+            }
+        }
+
+        updateSessionsDisplay();
+
+        // Add change event to goal select to update display
+        goalSelect.addEventListener('change', updateCurrentGoalDisplay);
+    });
+
+    // Initialize timer
+    function initTimer() {
+        workMinutes = parseInt(workMinutesInput.value);
+        breakMinutes = parseInt(breakMinutesInput.value);
+        timeLeft = workMinutes * 60;
+        updateDisplay();
+    }
+
+    // Update timer display
+    function updateDisplay() {
+        const minutes = Math.floor(timeLeft / 60);
+        const seconds = timeLeft % 60;
+        timeDisplay.textContent = `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+    }
+    // Update these functions in timer.ejs
+
+    // Start timer function (update this)
+    function startTimer() {
+        if (!isRunning) {
+            if (isPaused) {
+                // Resuming after pause
+                isPaused = false;
+            } else {
+                // Starting fresh
+                startTime = new Date();
+            }
+
+            isRunning = true;
+
+            // Update status text based on work/break and pomodoro count
+            if (isWorkTime) {
+                statusText.textContent = `Work Time (Pomodoro ${currentPomodoroCount + 1} of ${totalPomodoros})`;
+            } else {
+                statusText.textContent = 'Break Time';
+            }
+
+            startBtn.disabled = true;
+            pauseBtn.disabled = false;
+            workMinutesInput.disabled = true;
+            breakMinutesInput.disabled = true;
+            goalSelect.disabled = true;
+
+            timer = setInterval(() => {
+                timeLeft--;
+                updateDisplay();
+
+                if (timeLeft <= 0) {
+                    clearInterval(timer);
+                    completeSession();
+                }
+            }, 1000);
+        }
+    }
+
+    // Pause timer (update this)
+    function pauseTimer() {
+        if (isRunning) {
+            clearInterval(timer);
+            isPaused = true;
+            isRunning = false;
+            statusText.textContent = 'Paused';
+            startBtn.disabled = false;
+            startBtn.textContent = 'Resume';
+            pauseBtn.disabled = true;
+        }
+    }
+
+    // Reset timer (update this)
+    function resetTimer() {
+        clearInterval(timer);
+        isRunning = false;
+        isPaused = false;
+        isWorkTime = true;
+        statusText.textContent = 'Ready to start';
+        currentPomodoroCount = 0;
+        updateProgressDisplay();
+
+        // Reset the start button text
+        startBtn.textContent = 'Start';
+
+        startBtn.disabled = false;
+        pauseBtn.disabled = true;
+        workMinutesInput.disabled = false;
+        breakMinutesInput.disabled = false;
+        goalSelect.disabled = false;
+
+        initTimer();
+    }
+    // Complete session
+    function completeSession() {
+        const endTime = new Date();
+
+        if (isWorkTime) {
+            // Work session completed
+            currentPomodoroCount++;
+            updateProgressDisplay();
+
+            const goalId = goalSelect.value || null;
+            const selectedGoalText = goalId ? goalSelect.options[goalSelect.selectedIndex].text : null;
+
+            const session = {
+                startTime,
+                endTime,
+                duration: Math.floor((endTime - startTime) / 1000),
+                isWorkSession: true,
+                goalId,
+                goalText: selectedGoalText,
+                pomodoroNumber: currentPomodoroCount,
+                totalPomodoros: totalPomodoros
+            };
+
+            sessions.push(session);
+
+            // Save to localStorage with user-specific key
+            localStorage.setItem(`pomodoro_sessions_${userId}`, JSON.stringify(sessions.map(s => ({
+                ...s,
+                startTime: s.startTime.toISOString(),
+                endTime: s.endTime.toISOString()
+            }))));
+
+            saveSession(session);
+            updateSessionsDisplay();
+
+            // Check if this was the last pomodoro
+            if (currentPomodoroCount >= totalPomodoros) {
+                // Final pomodoro completed - show task complete
+                isWorkTime = true; // Reset to work time for next goal
+                timeLeft = workMinutes * 60;
+                isRunning = false;
+                statusText.textContent = 'Task Completed! 🎉';
+
+                startBtn.disabled = false;
+                pauseBtn.disabled = true;
+                workMinutesInput.disabled = false;
+                breakMinutesInput.disabled = false;
+                goalSelect.disabled = false;
+
+                // If this was associated with a goal, mark it as completed
+                if (goalId) {
+                    markGoalAsCompleted(goalId);
+                }
+
+                updateDisplay();
+            } else {
+                // Switch to break time for intermediate pomodoros
+                isWorkTime = false;
+                timeLeft = breakMinutes * 60;
+                isRunning = false; // Reset isRunning flag to ensure startTimer will work
+                statusText.textContent = 'Break Time';
+
+                // Ensure the timer is properly cleared
+                clearInterval(timer);
+
+                // Small delay before starting break timer to ensure UI updates
+                setTimeout(() => {
+                    startTimer();
+                }, 300);
+            }
+        } else {
+            // Break session completed, start next work session
+            isWorkTime = true;
+            timeLeft = workMinutes * 60;
+            isRunning = false;
+            statusText.textContent = `Ready for Pomodoro ${currentPomodoroCount + 1} of ${totalPomodoros}`;
+
+            startBtn.disabled = false;
+            pauseBtn.disabled = true;
+
+            // Don't enable inputs between pomodoros to maintain focus
+            if (currentPomodoroCount < totalPomodoros) {
+                // Auto-start next pomodoro after a short break
+                setTimeout(() => {
+                    startTimer();
+                }, 1500);
+            } else {
+                // Re-enable inputs only when completely done
+                workMinutesInput.disabled = false;
+                breakMinutesInput.disabled = false;
+                goalSelect.disabled = false;
+            }
+
+            updateDisplay();
+        }
+    }
+
+    // Mark goal as completed
+    function markGoalAsCompleted(goalId) {
+        fetch(`/goals/${goalId}/complete`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            }
+        })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    console.log('Goal marked as completed:', data);
+                    // Remove this goal from the dropdown as it's now completed
+                    const option = goalSelect.querySelector(`option[value="${goalId}"]`);
+                    if (option) {
+                        option.remove();
+                    }
+
+                    // Show a success notification
+                    const notification = document.createElement('div');
+                    notification.className = 'alert alert-success alert-dismissible fade show mt-3';
+                    notification.innerHTML = `
+                    <strong>Goal Completed!</strong> "${currentGoalText.textContent}" has been marked as completed.
+                    <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+                `;
+                    document.querySelector('.timer-display').appendChild(notification);
+
+                    // Reset goal selection
+                    goalSelect.value = '';
+                    updateCurrentGoalDisplay();
+                }
+            })
+            .catch(error => {
+                console.error('Error marking goal as completed:', error);
+            });
+    }
+
+    // Save session to database
+    function saveSession(session) {
+        fetch('/goals/pomodoro', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                goalId: session.goalId,
+                startTime: session.startTime.toISOString(),
+                endTime: session.endTime.toISOString(),
+                completed: true,
+                pomodoroNumber: session.pomodoroNumber,
+                totalPomodoros: session.totalPomodoros
+            })
+        })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    console.log('Session saved successfully', data);
+
+                    // If the goal status was updated, update the UI to reflect this
+                    if (data.goalUpdated && session.goalId) {
+                        // Add a visual indicator that the goal was marked as completed
+                        const listItem = document.querySelector(`#sessions-container li:last-child`);
+                        if (listItem) {
+                            const goalStatusBadge = document.createElement('div');
+                            goalStatusBadge.className = 'mt-2 text-success';
+                            goalStatusBadge.innerHTML = '<small><i>Goal marked as completed!</i></small>';
+                            listItem.appendChild(goalStatusBadge);
+                        }
+                    }
+                } else {
+                    console.error('Error saving session:', data.error);
+                }
+            })
+            .catch(error => console.error('Error saving session:', error));
+    }
+
+    // Update sessions display
+    function updateSessionsDisplay() {
+        if (!sessions || sessions.length === 0) {
+            sessionsContainer.innerHTML = '<p>Complete a Pomodoro session to see it here.</p>';
+            return;
+        }
+
+        let html = '<ul class="list-group">';
+
+        for (let i = 0; i < sessions.length; i++) {
+            const session = sessions[i];
+            const duration = Math.floor(session.duration / 60);
+            const time = new Date(session.endTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+            const goalText = session.goalText ? `Working on: ${session.goalText}` : 'No goal selected';
+
+            // Add pomodoro count info if available
+            const pomodoroInfo = session.pomodoroNumber ?
+                `<div class="text-muted small">Pomodoro ${session.pomodoroNumber} of ${session.totalPomodoros}</div>` : '';
+
+            html += `
+            <li class="list-group-item" id="session-${i}">
+              <div class="d-flex justify-content-between align-items-center">
+                <div>
+                  <strong>Session ${i + 1}</strong> - ${duration} minutes (${time})
+                  <div class="text-muted small">${goalText}</div>
+                  ${pomodoroInfo}
+                </div>
+                <span class="badge bg-success">Completed</span>
+              </div>
+            </li>
+          `;
+        }
+
+        html += '</ul>';
+        sessionsContainer.innerHTML = html;
+    }
+
+    // Event listeners
+    startBtn.addEventListener('click', startTimer);
+    pauseBtn.addEventListener('click', pauseTimer);
+    resetBtn.addEventListener('click', resetTimer);
+    workMinutesInput.addEventListener('change', initTimer);
+    breakMinutesInput.addEventListener('change', initTimer);
+
+    // Initialize timer values
+    initTimer();
+
+    // Update the current goal display
+    updateCurrentGoalDisplay();
+</script>
+
+<%- include('partials/footer') %>

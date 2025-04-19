@@ -1,0 +1,24 @@
+# Node.js dependencies
+node_modules/
+
+# Environment variables and secrets
+.env
+
+# Log files
+logs/
+*.log
+
+# Runtime data
+pids/
+*.pid
+*.seed
+
+# Optional npm cache directory
+.npm
+
+# Optional eslint cache
+.eslintcache
+
+# OS files
+.DS_Store
+Thumbs.db
